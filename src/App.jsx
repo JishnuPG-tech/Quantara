@@ -1,6 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import './App.css';
-import { LESSONS, FASTEST_METHODS } from './lessonsData';
+import DashboardStats from './components/DashboardStats';
+import LevelMap from './components/LevelMap';
+import TopperSprintArena from './components/TopperSprintArena';
+import RetrainingSandbox from './components/RetrainingSandbox';
+
 
 // SVG Inline Icons
 const IconHome = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>;
@@ -71,20 +75,7 @@ const QUIZ_QUESTIONS = [
   }
 ];
 
-const ROADMAP_COORDINATES = [
-  { x: 300, y: 80, align: 'right' },
-  { x: 420, y: 200, align: 'left' },
-  { x: 300, y: 320, align: 'right' },
-  { x: 180, y: 440, align: 'right' },
-  { x: 300, y: 560, align: 'left' },
-  { x: 420, y: 680, align: 'left' },
-  { x: 300, y: 800, align: 'right' },
-  { x: 180, y: 920, align: 'right' },
-  { x: 300, y: 1040, align: 'left' },
-  { x: 420, y: 1160, align: 'left' },
-  { x: 300, y: 1280, align: 'right' },
-  { x: 180, y: 1400, align: 'right' }
-];
+
 
 const getCheckpointData = (lesson) => {
   if (lesson.category === 'quant') {
@@ -173,8 +164,7 @@ export default function App() {
     return localStorage.getItem('bank_colorblind_safe') === 'true';
   });
   
-  // Topper Attack speed and stats states
-  const [topperSprintTimer, setTopperSprintTimer] = useState(15); // 15 seconds per question
+
   
   // Explanation styles & interactive micro-checkpoints
   const [explanationStyle, setExplanationStyle] = useState('visual'); // 'visual', 'logical', 'shortcut', 'story'
@@ -294,40 +284,48 @@ export default function App() {
     localStorage.setItem('bank_silent_backup', JSON.stringify(backupObj));
   }, [completedLessons, streak, mistakeFingerprints, syllabus, analyticsData]);
 
-  // Topper Attack Sprint Timer Countdown
-  useEffect(() => {
-    let timer;
-    if (activeLesson && lessonStep === 3 && learningMode === 'topper' && quizFeedback === null) {
-      const currentQKey = `${activeLesson.id}_${quizQuestionIdx}`;
-      const attempts = quizAttempts[currentQKey] || 0;
-      // Disable timer in Slow Coach Mode (Stage 3+)
-      if (attempts < 3) {
-        timer = setInterval(() => {
-          setTopperSprintTimer(prev => {
-            if (prev <= 1) {
-              clearInterval(timer);
-              setQuizFeedback('incorrect');
-              const currentAttempts = (quizAttempts[currentQKey] || 0) + 1;
-              setQuizAttempts(prevAtt => ({ ...prevAtt, [currentQKey]: currentAttempts }));
-              
-              // Increment mistake fingerprint
-              let errorType = null;
-              if (activeLesson.id === 5) errorType = 'negativeSigns';
-              else if (activeLesson.id === 6 || activeLesson.id === 7) errorType = 'onlyAFew';
-              else if (activeLesson.id === 8) errorType = 'inequalityDirection';
-              else if ([1, 2, 3, 4].includes(activeLesson.id)) errorType = 'carryDigits';
-              if (errorType) {
-                setMistakeFingerprints(mf => ({ ...mf, [errorType]: mf[errorType] + 1 }));
-              }
-              return 15;
-            }
-            return prev - 1;
-          });
-        }, 1000);
-      }
+  const handleTopperTimeout = useCallback(() => {
+    if (!activeLesson) return;
+    setQuizFeedback('incorrect');
+    const currentQKey = `${activeLesson.id}_${quizQuestionIdx}`;
+    const currentAttempts = (quizAttempts[currentQKey] || 0) + 1;
+    setQuizAttempts(prevAtt => ({ ...prevAtt, [currentQKey]: currentAttempts }));
+    
+    let errorType = null;
+    if (activeLesson.id === 5) errorType = 'negativeSigns';
+    else if (activeLesson.id === 6 || activeLesson.id === 7) errorType = 'onlyAFew';
+    else if (activeLesson.id === 8) errorType = 'inequalityDirection';
+    else if ([1, 2, 3, 4].includes(activeLesson.id)) errorType = 'carryDigits';
+    if (errorType) {
+      setMistakeFingerprints(mf => ({ ...mf, [errorType]: mf[errorType] + 1 }));
     }
-    return () => clearInterval(timer);
-  }, [activeLesson, lessonStep, learningMode, quizFeedback, quizQuestionIdx, quizAttempts]);
+  }, [activeLesson, quizQuestionIdx, quizAttempts]);
+
+  const handleRetry = useCallback(() => {
+    setSelectedQuizOpt(null);
+    setQuizFeedback(null);
+  }, []);
+
+  const handleReplayWhiteboard = useCallback(() => {
+    setLessonStep(2);
+    setActiveBoardStep(0);
+  }, []);
+
+  const handleRevealHint = useCallback((type) => {
+    if (!activeLesson) return;
+    if (type === 'concept') {
+      alert("Hint 1: " + activeLesson.quiz[quizQuestionIdx].explanation.split('.')[0]);
+    } else {
+      alert("Hint 2: Look at the unit values of options. The correct one matches the mathematical deviation boundary!");
+    }
+  }, [activeLesson, quizQuestionIdx]);
+
+  const handleSolveStepByStep = useCallback(() => {
+    setSelectedQuizOpt(null);
+    setQuizFeedback(null);
+  }, []);
+
+
 
   // Calculate Progress Stats
   const getSectionStats = (section) => {
@@ -867,197 +865,26 @@ export default function App() {
                 </div>
               </div>
 
-              {/* HUD Bar Display */}
-              <div className="hud-bar">
-                <div className="hud-item">
-                  <div className="hud-icon">
-                    <IconBrain />
-                  </div>
-                  <div className="hud-details">
-                    <span className="hud-title">Curriculum Progress</span>
-                    <span className="hud-value">{completedLessons.length} / 12 Mastered</span>
-                  </div>
-                </div>
+              <DashboardStats
+                completedLessons={completedLessons}
+                streak={streak}
+                mistakeFingerprints={mistakeFingerprints}
+              />
 
-                <div className="hud-item">
-                  <div className="hud-icon secondary">
-                    <IconSparkles />
-                  </div>
-                  <div className="hud-details">
-                    <span className="hud-title">Total XP Earned</span>
-                    <span className="hud-value">{completedLessons.length * 100} XP</span>
-                  </div>
-                </div>
-
-                <div className="hud-item">
-                  <div className="hud-icon" style={{ background: 'hsl(var(--warning) / 0.08)', borderColor: 'hsl(var(--warning) / 0.3)', color: 'hsl(var(--warning))' }}>
-                    <IconClock />
-                  </div>
-                  <div className="hud-details">
-                    <span className="hud-title">Daily Study Streak</span>
-                    <span className="hud-value">{streak} Days 🔥</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Retraining HUD Card */}
-              <div className="retraining-hud-card animate-slide-in">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                  <div className="hud-icon secondary" style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><IconBrain /></div>
-                  <h3 style={{ fontSize: '0.98rem', fontWeight: '800', margin: 0 }}>Mistake Fingerprint Radar</h3>
-                </div>
-                <p style={{ fontSize: '0.78rem', color: 'hsl(var(--text-muted))', marginBottom: '14px' }}>
-                  Our Adaptive OS analyzes your quiz submissions to catalog conceptual blindspots. Keep these logs clear, aspirant!
-                </p>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginBottom: '14px' }}>
-                  <div className="radar-stat-box" style={{ background: 'hsl(var(--bg-main) / 0.5)', padding: '8px', borderRadius: '6px', fontSize: '0.74rem', border: '1px solid hsl(var(--border-line))' }}>
-                    <span style={{ display: 'block', color: 'hsl(var(--text-muted))', fontWeight: '600' }}>Negative Signs</span>
-                    <span style={{ fontSize: '0.9rem', fontWeight: '800', color: mistakeFingerprints.negativeSigns > 2 ? 'hsl(var(--destructive))' : 'hsl(var(--text-primary))' }}>
-                      {mistakeFingerprints.negativeSigns} Hits
-                    </span>
-                  </div>
-                  <div className="radar-stat-box" style={{ background: 'hsl(var(--bg-main) / 0.5)', padding: '8px', borderRadius: '6px', fontSize: '0.74rem', border: '1px solid hsl(var(--border-line))' }}>
-                    <span style={{ display: 'block', color: 'hsl(var(--text-muted))', fontWeight: '600' }}>Inequality Direction</span>
-                    <span style={{ fontSize: '0.9rem', fontWeight: '800', color: mistakeFingerprints.inequalityDirection > 2 ? 'hsl(var(--destructive))' : 'hsl(var(--text-primary))' }}>
-                      {mistakeFingerprints.inequalityDirection} Hits
-                    </span>
-                  </div>
-                  <div className="radar-stat-box" style={{ background: 'hsl(var(--bg-main) / 0.5)', padding: '8px', borderRadius: '6px', fontSize: '0.74rem', border: '1px solid hsl(var(--border-line))' }}>
-                    <span style={{ display: 'block', color: 'hsl(var(--text-muted))', fontWeight: '600' }}>Carry Digits</span>
-                    <span style={{ fontSize: '0.9rem', fontWeight: '800', color: mistakeFingerprints.carryDigits > 2 ? 'hsl(var(--destructive))' : 'hsl(var(--text-primary))' }}>
-                      {mistakeFingerprints.carryDigits} Hits
-                    </span>
-                  </div>
-                  <div className="radar-stat-box" style={{ background: 'hsl(var(--bg-main) / 0.5)', padding: '8px', borderRadius: '6px', fontSize: '0.74rem', border: '1px solid hsl(var(--border-line))' }}>
-                    <span style={{ display: 'block', color: 'hsl(var(--text-muted))', fontWeight: '600' }}>Only a Few Rules</span>
-                    <span style={{ fontSize: '0.9rem', fontWeight: '800', color: mistakeFingerprints.onlyAFew > 2 ? 'hsl(var(--destructive))' : 'hsl(var(--text-primary))' }}>
-                      {mistakeFingerprints.onlyAFew} Hits
-                    </span>
-                  </div>
-                </div>
-                <div style={{ background: 'hsl(var(--primary) / 0.05)', border: '1.5px solid hsl(var(--primary) / 0.2)', padding: '10px', borderRadius: '8px', fontSize: '0.74rem' }}>
-                  <span style={{ fontWeight: '800', color: 'hsl(var(--primary))', display: 'block', marginBottom: '4px' }}>🔥 Retraining Recommendation:</span>
-                  {mistakeFingerprints.negativeSigns >= mistakeFingerprints.inequalityDirection && 
-                   mistakeFingerprints.negativeSigns >= mistakeFingerprints.carryDigits && 
-                   mistakeFingerprints.negativeSigns >= mistakeFingerprints.onlyAFew ? (
-                    "Pay close attention to quadratic root signs. Double check constant sign switches before solving comparisons!"
-                  ) : mistakeFingerprints.inequalityDirection >= mistakeFingerprints.carryDigits && 
-                       mistakeFingerprints.inequalityDirection >= mistakeFingerprints.onlyAFew ? (
-                    "When evaluating coded inequalities, trace open/closed gates from source to target. Block immediately on gate flips!"
-                  ) : mistakeFingerprints.onlyAFew >= mistakeFingerprints.carryDigits ? (
-                    "Syllogisms with 'Only a few' mean both 'Some' and 'Some Not'. Always draw directional Venn restrictions!"
-                  ) : (
-                    "Vedic multiplication carry-digits can get messy. Keep scratch workspace structured to avoid simple additions slips!"
-                  )}
-                </div>
-              </div>
-
-              {/* Game Level Path Map Container */}
-              <div className="section-box" style={{ width: '100%', overflowX: 'auto', display: 'flex', justifyContent: 'center' }}>
-                <div className="roadmap-container">
-                  {/* SVG Winding Road Path */}
-                  <svg className="roadmap-svg" width="600" height="1500" viewBox="0 0 600 1500">
-                    {/* Background track (Locked/Gray path) */}
-                    <path
-                      d="M 300 80 C 450 140, 450 140, 420 200 C 390 260, 330 260, 300 320 C 270 380, 210 380, 180 440 C 150 500, 270 500, 300 560 C 330 620, 450 620, 420 680 C 390 740, 330 740, 300 800 C 270 860, 210 860, 180 920 C 150 980, 270 980, 300 1040 C 330 1100, 450 1100, 420 1160 C 390 1220, 330 1220, 300 1280 C 270 1340, 210 1340, 180 1400"
-                      className="roadmap-path-bg"
-                    />
-                    {/* Active completed track (Teal dash path) */}
-                    <path
-                      d="M 300 80 C 450 140, 450 140, 420 200 C 390 260, 330 260, 300 320 C 270 380, 210 380, 180 440 C 150 500, 270 500, 300 560 C 330 620, 450 620, 420 680 C 390 740, 330 740, 300 800 C 270 860, 210 860, 180 920 C 150 980, 270 980, 300 1040 C 330 1100, 450 1100, 420 1160 C 390 1220, 330 1220, 300 1280 C 270 1340, 210 1340, 180 1400"
-                      className="roadmap-path-active"
-                      style={{
-                        strokeDasharray: '12 8',
-                        stroke: 'hsl(var(--primary))',
-                        opacity: completedLessons.length > 0 ? 0.9 : 0.1
-                      }}
-                    />
-                  </svg>
-
-                  {/* Level Nodes */}
-                  {LESSONS.map((lesson, idx) => {
-                    const coords = ROADMAP_COORDINATES[idx] || { x: 300, y: 80, align: 'right' };
-                    const isUnlocked = idx === 0 || completedLessons.includes(lesson.id - 1);
-                    const isCompleted = completedLessons.includes(lesson.id);
-                    
-                    let nodeClass = "locked";
-                    if (isCompleted) nodeClass = "completed";
-                    else if (isUnlocked) nodeClass = "unlocked";
-
-                    return (
-                      <div
-                        key={lesson.id}
-                        className="roadmap-node-wrapper"
-                        style={{ left: `${coords.x}px`, top: `${coords.y}px` }}
-                      >
-                        <button
-                          onClick={() => {
-                            if (isUnlocked) {
-                              setActiveLesson(lesson);
-                              setLessonStep(1);
-                              setQuizQuestionIdx(0);
-                              setSelectedQuizOpt(null);
-                              setQuizFeedback(null);
-                              setActiveBoardStep(0);
-                              setTopperSprintTimer(15);
-                              setCheckpointSelectedOpt(null);
-                              setCheckpointFeedback(null);
-                              setExplanationStyle('visual');
-                            } else {
-                              alert(`Level Locked! Please complete Level ${lesson.id - 1} first to unlock this topic.`);
-                            }
-                          }}
-                          className={`roadmap-node ${nodeClass}`}
-                          title={lesson.title}
-                          aria-label={`Level ${lesson.id}: ${lesson.title}`}
-                        >
-                          <div className="roadmap-node-inner">
-                            {isCompleted ? (
-                              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="20 6 9 17 4 12" />
-                              </svg>
-                            ) : !isUnlocked ? (
-                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
-                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                              </svg>
-                            ) : (
-                              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: 'translateX(2px)' }}>
-                                <polygon points="5 3 19 12 5 21 5 3" />
-                              </svg>
-                            )}
-                          </div>
-                        </button>
-                        
-                        <div className={`roadmap-node-label label-${coords.align}`} style={{ minWidth: '190px', padding: '10px 14px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', gap: '8px' }}>
-                            <span style={{ fontSize: '0.58rem', fontWeight: '800', padding: '2px 6px', borderRadius: '4px', background: lesson.category === 'quant' ? 'hsl(var(--primary) / 0.12)' : lesson.category === 'reasoning' ? 'hsl(var(--secondary) / 0.12)' : 'hsl(var(--text-muted) / 0.12)', color: lesson.category === 'quant' ? 'hsl(var(--primary))' : lesson.category === 'reasoning' ? 'hsl(var(--secondary))' : 'hsl(var(--text-muted))', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-                              {lesson.category}
-                            </span>
-                            <span style={{ fontSize: '0.62rem', fontWeight: '800', color: 'hsl(var(--warning))' }}>
-                              +{lesson.xp} XP
-                            </span>
-                          </div>
-                          <div style={{ fontSize: '0.8rem', fontWeight: '850', color: 'hsl(var(--text-primary))', lineHeight: '1.3' }}>
-                            {lesson.title}
-                          </div>
-                          <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <span style={{
-                              width: '6px',
-                              height: '6px',
-                              borderRadius: '50%',
-                              background: isCompleted ? 'hsl(var(--success))' : isUnlocked ? 'hsl(var(--secondary))' : 'hsl(var(--text-muted) / 0.4)'
-                            }}></span>
-                            <span style={{ fontSize: '0.58rem', fontWeight: '800', color: 'hsl(var(--text-muted))', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-                              {isCompleted ? 'Mastered' : isUnlocked ? 'Ready to Study' : 'Locked'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              <LevelMap
+                completedLessons={completedLessons}
+                onNodeClick={(lesson) => {
+                  setActiveLesson(lesson);
+                  setLessonStep(1);
+                  setQuizQuestionIdx(0);
+                  setSelectedQuizOpt(null);
+                  setQuizFeedback(null);
+                  setActiveBoardStep(0);
+                  setCheckpointSelectedOpt(null);
+                  setCheckpointFeedback(null);
+                  setExplanationStyle('visual');
+                }}
+              />
 
             </div>
           )}
@@ -3226,42 +3053,14 @@ export default function App() {
                   {/* Left Column: Tutoring dialogues and Visual whiteboards */}
                   <div className="tablet-scroll-pane">
                     {learningMode === 'topper' ? (
-                      <div className="fastest-method-card animate-slide-in">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                          <span className="hero-badge" style={{ background: 'hsl(var(--warning) / 0.15)', color: 'hsl(var(--warning))' }}>Topper Sprint Mode</span>
-                          <span style={{ fontSize: '0.8rem', fontWeight: '800', color: 'hsl(var(--secondary))' }}>Topper Pick: Method {FASTEST_METHODS[activeLesson.id]?.preferred || 'B'}</span>
-                        </div>
-                        <h4 className="tip-title" style={{ fontSize: '1.05rem', marginBottom: '8px' }}>Fastest Known Method Comparison</h4>
-                        <p style={{ fontSize: '0.78rem', color: 'hsl(var(--text-muted))', marginBottom: '16px' }}>
-                          {FASTEST_METHODS[activeLesson.id]?.preferredReason}
-                        </p>
-                        
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                          <div style={{ border: '1px solid hsl(var(--border-line))', borderRadius: '8px', padding: '10px', background: 'hsl(var(--bg-main) / 0.3)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontWeight: '800', marginBottom: '4px' }}>
-                              <span>Method A: Traditional</span>
-                              <span style={{ color: 'hsl(var(--destructive))' }}>{FASTEST_METHODS[activeLesson.id]?.speed}</span>
-                            </div>
-                            <p style={{ fontSize: '0.74rem', lineHeight: '1.4' }}>{FASTEST_METHODS[activeLesson.id]?.traditional}</p>
-                          </div>
-
-                          <div style={{ border: '1.5px solid hsl(var(--primary) / 0.5)', borderRadius: '8px', padding: '10px', background: 'hsl(var(--primary) / 0.05)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontWeight: '800', marginBottom: '4px', color: 'hsl(var(--primary))' }}>
-                              <span>Method B: Vedic (Topper Preferred)</span>
-                              <span style={{ color: 'hsl(var(--primary))' }}>{FASTEST_METHODS[activeLesson.id]?.vedicSpeed}</span>
-                            </div>
-                            <p style={{ fontSize: '0.74rem', lineHeight: '1.4' }}>{FASTEST_METHODS[activeLesson.id]?.vedic}</p>
-                          </div>
-
-                          <div style={{ border: '1px solid hsl(var(--border-line))', borderRadius: '8px', padding: '10px', background: 'hsl(var(--bg-main) / 0.3)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontWeight: '800', marginBottom: '4px' }}>
-                              <span>Method C: Approximation</span>
-                              <span style={{ color: 'hsl(var(--warning))' }}>{FASTEST_METHODS[activeLesson.id]?.approxSpeed}</span>
-                            </div>
-                            <p style={{ fontSize: '0.74rem', lineHeight: '1.4' }}>{FASTEST_METHODS[activeLesson.id]?.approx}</p>
-                          </div>
-                        </div>
-                      </div>
+                      <TopperSprintArena
+                        key={`${activeLesson.id}_${quizQuestionIdx}`}
+                        activeLesson={activeLesson}
+                        quizQuestionIdx={quizQuestionIdx}
+                        quizAttempts={quizAttempts}
+                        quizFeedback={quizFeedback}
+                        onTimeout={handleTopperTimeout}
+                      />
                     ) : learningMode === 'speed' ? (
                       <div className="fastest-method-card animate-slide-in" style={{ borderColor: 'hsl(var(--secondary) / 0.5)' }}>
                         <div style={{ marginBottom: '12px' }}>
@@ -3476,10 +3275,7 @@ export default function App() {
                       {lessonStep < 3 ? (
                         <button
                           onClick={() => {
-                            setLessonStep(prev => {
-                              if (prev === 2) setTopperSprintTimer(15);
-                              return prev + 1;
-                            });
+                            setLessonStep(prev => prev + 1);
                           }}
                           className="glass-btn glass-btn-primary"
                           style={{ flex: 1 }}
@@ -3494,12 +3290,7 @@ export default function App() {
                   <div className="tablet-scroll-pane right-pane">
                     {lessonStep === 3 ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                        {learningMode === 'topper' && (quizAttempts[`${activeLesson.id}_${quizQuestionIdx}`] || 0) < 3 && (
-                          <div style={{ background: 'hsl(var(--destructive) / 0.1)', border: '1px solid hsl(var(--destructive) / 0.3)', color: 'hsl(var(--destructive))', padding: '8px 12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem', fontWeight: '800' }}>
-                            <span>⏱ TOPPER SPRINT TIMER:</span>
-                            <span className="animate-pulse">{topperSprintTimer}s Remaining</span>
-                          </div>
-                        )}
+
 
                         <div>
                           <span className="hero-badge">Aptitude Test Arena</span>
@@ -3597,111 +3388,13 @@ export default function App() {
                           ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                               {quizFeedback === 'incorrect' ? (
-                                (() => {
-                                  const attempts = quizAttempts[`${activeLesson.id}_${quizQuestionIdx}`] || 0;
-                                  if (attempts === 1) {
-                                    return (
-                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%' }}>
-                                        <div className="coach-speech-bubble" style={{ borderLeft: '4px solid hsl(var(--destructive))', background: 'hsl(var(--destructive) / 0.05)', padding: '12px', marginTop: '0', borderRadius: '8px' }}>
-                                          <span style={{ fontWeight: '800', color: 'hsl(var(--destructive))', display: 'block', fontSize: '0.8rem', textTransform: 'uppercase' }}>Stage 1 Correction</span>
-                                          <p style={{ fontSize: '0.78rem', lineHeight: '1.4', margin: '4px 0 0 0' }}>
-                                            Check the calculation steps. You might have missed a sign transition. Replay the whiteboard steps first!
-                                          </p>
-                                        </div>
-                                        <div style={{ display: 'flex', gap: '10px' }}>
-                                          <button
-                                            onClick={() => {
-                                              setLessonStep(2);
-                                              setActiveBoardStep(0);
-                                            }}
-                                            className="glass-btn glass-btn-secondary"
-                                            style={{ flex: 1, fontSize: '0.74rem' }}
-                                          >
-                                            Replay Whiteboard Steps
-                                          </button>
-                                          <button
-                                            onClick={() => {
-                                              setSelectedQuizOpt(null);
-                                              setQuizFeedback(null);
-                                            }}
-                                            className="glass-btn glass-btn-outline"
-                                            style={{ flex: 1, fontSize: '0.74rem' }}
-                                          >
-                                            Retry Directly
-                                          </button>
-                                        </div>
-                                      </div>
-                                    );
-                                  } else if (attempts === 2) {
-                                    return (
-                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%' }}>
-                                        <div className="retraining-sandbox-overlay" style={{ background: 'hsl(var(--secondary) / 0.05)', border: '1.5px dashed hsl(var(--secondary) / 0.3)', padding: '16px', borderRadius: '12px' }}>
-                                          <span style={{ fontWeight: '800', color: 'hsl(var(--secondary))', display: 'block', fontSize: '0.8rem', textTransform: 'uppercase', marginBottom: '8px' }}>Stage 2: Retraining Sandbox Active</span>
-                                          <p style={{ fontSize: '0.78rem', lineHeight: '1.4', margin: '0 0 12px 0' }}>
-                                            No panic! Let's build up your concept model with 2 quick guided micro-examples:
-                                          </p>
-                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.74rem', background: 'hsl(var(--bg-main) / 0.5)', padding: '10px', borderRadius: '8px', border: '1px solid hsl(var(--border-line))', marginBottom: '12px' }}>
-                                            <div>
-                                              <strong>Micro-Example 1:</strong> Simplify (45% of 200). Split mentally: 10% is 20. 40% is 80. 5% is 10. 80 + 10 = 90.
-                                            </div>
-                                            <div style={{ borderTop: '1px solid hsl(var(--border-line))', paddingTop: '6px', marginTop: '6px' }}>
-                                              <strong>Micro-Example 2:</strong> Solve x² - 5x + 6 = 0. Constant is +6, product of roots = +6. x factors are -2, -3. Roots are +2, +3.
-                                            </div>
-                                          </div>
-                                          <button
-                                            onClick={() => {
-                                              setSelectedQuizOpt(null);
-                                              setQuizFeedback(null);
-                                            }}
-                                            className="glass-btn glass-btn-secondary"
-                                            style={{ width: '100%', fontSize: '0.74rem' }}
-                                          >
-                                            Verify Sandbox & Return to Quiz
-                                          </button>
-                                        </div>
-                                      </div>
-                                    );
-                                  } else {
-                                    return (
-                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%' }}>
-                                        <div className="coach-speech-bubble" style={{ borderLeft: '4px solid hsl(var(--warning))', background: 'hsl(var(--warning) / 0.05)', padding: '12px', marginTop: '0', borderRadius: '8px' }}>
-                                          <span style={{ fontWeight: '800', color: 'hsl(var(--warning))', display: 'block', fontSize: '0.8rem', textTransform: 'uppercase' }}>Stage 3: Slow Coach Mode (Timer Removed)</span>
-                                          <p style={{ fontSize: '0.78rem', lineHeight: '1.4', margin: '4px 0 0 0' }}>
-                                            Let's slow right down. There is no timer pressure here. Let's isolate the root steps:
-                                          </p>
-                                          
-                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '10px' }}>
-                                            <button
-                                              onClick={() => alert("Hint 1: " + activeLesson.quiz[quizQuestionIdx].explanation.split('.')[0])}
-                                              className="glass-btn glass-btn-outline"
-                                              style={{ padding: '4px 8px', fontSize: '0.68rem', width: 'fit-content' }}
-                                            >
-                                              Reveal Concept Clue 🔍
-                                            </button>
-                                            <button
-                                              onClick={() => alert("Hint 2: Look at the unit values of options. The correct one matches the mathematical deviation boundary!")}
-                                              className="glass-btn glass-btn-outline"
-                                              style={{ padding: '4px 8px', fontSize: '0.68rem', width: 'fit-content' }}
-                                            >
-                                              Reveal Options Clue 💡
-                                            </button>
-                                          </div>
-                                        </div>
-                                        
-                                        <button
-                                          onClick={() => {
-                                            setSelectedQuizOpt(null);
-                                            setQuizFeedback(null);
-                                          }}
-                                          className="glass-btn glass-btn-primary"
-                                          style={{ width: '100%', fontSize: '0.74rem' }}
-                                        >
-                                          Solve Step-by-Step
-                                        </button>
-                                      </div>
-                                    );
-                                  }
-                                })()
+                                <RetrainingSandbox
+                                  attempts={quizAttempts[`${activeLesson.id}_${quizQuestionIdx}`] || 0}
+                                  onRetry={handleRetry}
+                                  onReplayWhiteboard={handleReplayWhiteboard}
+                                  onRevealHint={handleRevealHint}
+                                  onSolveStepByStep={handleSolveStepByStep}
+                                />
                               ) : (
                                 <button
                                   onClick={() => {
@@ -3709,7 +3402,6 @@ export default function App() {
                                       setQuizQuestionIdx(prev => prev + 1);
                                       setSelectedQuizOpt(null);
                                       setQuizFeedback(null);
-                                      setTopperSprintTimer(15);
                                     } else {
                                       handleCompleteLesson(activeLesson.id);
                                     }
@@ -3738,7 +3430,6 @@ export default function App() {
                         <button
                           onClick={() => {
                             setLessonStep(3);
-                            setTopperSprintTimer(15);
                           }}
                           className="glass-btn glass-btn-secondary"
                           style={{ padding: '10px 24px', fontSize: '0.78rem' }}
